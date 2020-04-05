@@ -20,10 +20,6 @@
 
 package com.github.fracpete.lwc;
 
-import com.github.fracpete.simpleargparse4j.ArgumentParser;
-import com.github.fracpete.simpleargparse4j.ArgumentParserException;
-import com.github.fracpete.simpleargparse4j.Namespace;
-import com.github.fracpete.simpleargparse4j.Option.Type;
 import weka.core.Environment;
 import weka.core.PluginManager;
 import weka.gui.GenericObjectEditor;
@@ -82,6 +78,9 @@ public class Main {
     }
   }
 
+  /** whether to run in quiet mode. */
+  protected boolean m_Quiet;
+
   /** whether to run package manager in offline mode. */
   protected boolean m_Offline;
 
@@ -97,6 +96,9 @@ public class Main {
   /** whether help got requested. */
   protected boolean m_HelpRequested;
 
+  /** the list of classes (either superclasses or subclasses). */
+  protected List<String> m_List;
+
   /**
    * Default constructor.
    */
@@ -108,11 +110,14 @@ public class Main {
    * Initializes the members.
    */
   protected void initialize() {
+    m_Quiet         = true;
     m_Offline       = false;
+    m_Quiet         = true;
     m_LoadPackages  = false;
     m_SuperClass    = "";
     m_Logger        = null;
     m_HelpRequested = false;
+    m_List          = new ArrayList<>();
   }
 
   /**
@@ -124,6 +129,26 @@ public class Main {
     if (m_Logger == null)
       m_Logger = Logger.getLogger(getClass().getName());
     return m_Logger;
+  }
+
+  /**
+   * Sets whether to run in quiet mode.
+   *
+   * @param value	true if quiet
+   * @return		itself
+   */
+  protected Main quiet(boolean value) {
+    m_Quiet = value;
+    return this;
+  }
+
+  /**
+   * Returns whether to run in quiet mode.
+   *
+   * @return		true if quiet
+   */
+  protected boolean getQuiet() {
+    return m_Quiet;
   }
 
   /**
@@ -189,45 +214,12 @@ public class Main {
   }
 
   /**
-   * Configures and returns the commandline parser.
+   * Returns the list of classes.
    *
-   * @return		the parser
+   * @return		the superclasses or subclasses
    */
-  protected ArgumentParser getParser() {
-    ArgumentParser 		parser;
-
-    parser = new ArgumentParser("Listing Weka class hierarchies.");
-    parser.addOption("-o", "--offline")
-      .type(Type.BOOLEAN)
-      .setDefault(false)
-      .dest("offline")
-      .help("If enabled, the package manager is run in offline mode.");
-    parser.addOption("-l", "--load_packages")
-      .type(Type.BOOLEAN)
-      .setDefault(false)
-      .dest("load_packages")
-      .help("If enabled, packages get loaded before determining the class hierarchies.");
-    parser.addOption("-s", "--super_class")
-      .metaVar("CLASSNAME")
-      .type(Type.STRING)
-      .setDefault("")
-      .dest("super_class")
-      .help("The super class to list the class names for; outputs all super classes if not supplied.");
-
-    return parser;
-  }
-
-  /**
-   * Sets the parsed options.
-   *
-   * @param ns		the parsed options
-   * @return		if successfully set
-   */
-  protected boolean setOptions(Namespace ns) {
-    offline(ns.getBoolean("offline"));
-    loadPackages(ns.getBoolean("load_packages"));
-    superClass(ns.getString("super_class"));
-    return true;
+  public List<String> getList() {
+    return m_List;
   }
 
   /**
@@ -246,21 +238,60 @@ public class Main {
    * @return		true if successfully set (or help requested)
    */
   public boolean setOptions(String[] options) {
-    ArgumentParser 	parser;
-    Namespace 		ns;
+    boolean	result;
+    int		i;
 
+    result          = true;
     m_HelpRequested = false;
-    parser          = getParser();
-    try {
-      ns = parser.parseArgs(options);
-    }
-    catch (ArgumentParserException e) {
-      parser.handleError(e);
-      m_HelpRequested = parser.getHelpRequested();
-      return m_HelpRequested;
+
+    for (i = 0; i < options.length; i++) {
+      if (options[i].equals("--help") || options[i].equals("-h")) {
+        m_HelpRequested = true;
+        break;
+      }
+      else if (options[i].equals("--offline") || options[i].equals("-o")) {
+        offline(true);
+      }
+      else if (options[i].equals("--load_packages") || options[i].equals("-l")) {
+        loadPackages(true);
+      }
+      else if (options[i].equals("--super_class") || options[i].equals("-s")) {
+        if (i < options.length - 1) {
+          i++;
+          superClass(options[i]);
+	}
+      }
+      else if (!options[i].isEmpty()){
+        getLogger().warning("Unexpected argument: " + options[i]);
+        result = false;
+        break;
+      }
     }
 
-    return setOptions(ns);
+    if (m_HelpRequested || !result) {
+      if (m_HelpRequested) {
+	System.out.println("Help requested");
+	System.out.println();
+      }
+      System.out.println("Listing Weka class hierarchies.");
+      System.out.println();
+      System.out.println("Usage: [--help] [-o] [-l] [-s CLASSNAME]");
+      System.out.println();
+      System.out.println("Options:");
+      System.out.println("-o, --offline");
+      System.out.println("	If enabled, the package manager is run in offline mode.");
+      System.out.println();
+      System.out.println("-l, --load_packages");
+      System.out.println("	If enabled, packages get loaded before determining the class");
+      System.out.println("	hierarchies.");
+      System.out.println();
+      System.out.println("-s, --super_class CLASSNAME");
+      System.out.println("	The super class to list the class names for; outputs all super classes");
+      System.out.println("	if not supplied.");
+      System.out.println();
+    }
+
+    return result;
   }
 
   /**
@@ -269,8 +300,6 @@ public class Main {
    * @return		null if successful, otherwise error message
    */
   protected String doExecute() {
-    List<String> 	list;
-
     // set up environment
     Environment.getSystemWide().addVariable(OFFLINE, "" + m_Offline);
     Environment.getSystemWide().addVariable(LOAD_PACKAGES, "" + m_LoadPackages);
@@ -278,29 +307,32 @@ public class Main {
     // determine classes
     GenericObjectEditor.determineClasses();
 
-    list = new ArrayList<>();
+    m_List.clear();
     if (m_SuperClass.isEmpty()) {
-      list.addAll(AccessiblePluginManager.getPlugins().keySet());
+      m_List.addAll(AccessiblePluginManager.getPlugins().keySet());
     }
     else {
       if (AccessiblePluginManager.getPlugins().containsKey(m_SuperClass)) {
-        list.addAll(AccessiblePluginManager.getPlugins().get(m_SuperClass).keySet());
+        m_List.addAll(AccessiblePluginManager.getPlugins().get(m_SuperClass).keySet());
       }
       else {
         getLogger().severe("Unknown superclass: " + m_SuperClass);
+        return "Unknown superclass: " + m_SuperClass;
       }
     }
 
     // print list
-    Collections.sort(list);
-    for (String item: list)
-      System.out.println(item);
+    Collections.sort(m_List);
+    if (!m_Quiet) {
+      for (String item : m_List)
+	System.out.println(item);
+    }
 
     return null;
   }
 
   /**
-   * Performs the bootstrapping.
+   * Performs the listing.
    *
    * @return		null if successful, otherwise error message
    */
@@ -318,10 +350,10 @@ public class Main {
    * Launches the class from the commandline.
    *
    * @param args	the options to parse
-   * @throws Exception	if invalid options or failed to execute
    */
-  public static void main(String[] args) throws Exception {
+  public static void main(String[] args) {
     Main main = new Main();
+    main.quiet(false);
 
     if (!main.setOptions(args)) {
       System.err.println("Failed to parse options!");
@@ -333,7 +365,7 @@ public class Main {
 
     String result = main.execute();
     if (result != null) {
-      System.err.println("Failed to perform bootstrapping:\n" + result);
+      System.err.println("Failed to perform class listing:\n" + result);
       System.exit(2);
     }
   }

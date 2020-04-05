@@ -88,17 +88,11 @@
 
   <dependencies>
     <dependency>
-      <groupId>com.github.fracpete</groupId>
-      <artifactId>simple-argparse4j</artifactId>
-      <version>0.0.12</version>
-    </dependency>
-
-    <dependency>
       <groupId>nz.ac.waikato.cms.weka</groupId>
       <artifactId>weka-dev</artifactId>
       <version>3.9.4</version>
       <type>jar</type>
-      <!--scope>provided</scope-->
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 
